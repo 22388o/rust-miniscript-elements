@@ -92,6 +92,12 @@ pub struct DescriptorXPub {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct DescriptorKeyParseError(&'static str);
 
+impl fmt::Display for DescriptorKeyParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
 impl fmt::Display for DescriptorPublicKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -223,6 +229,34 @@ impl DescriptorPublicKey {
             Err(DescriptorKeyParseError(
                 "Hardened derivation is currently not supported.",
             ))
+        }
+    }
+
+    /// Derives a new key using the path if self is a wildcard xpub. Otherwise returns self.
+    ///
+    /// Panics if derivation path contains a hardened child number
+    pub fn derive(self, path: &[bip32::ChildNumber]) -> DescriptorPublicKey {
+        assert!(path.into_iter().all(|c| c.is_normal()));
+
+        match self {
+            DescriptorPublicKey::PubKey(_) => self,
+            DescriptorPublicKey::XPub(xpub) => {
+                if xpub.is_wildcard {
+                    DescriptorPublicKey::XPub(DescriptorXPub {
+                        origin: xpub.origin,
+                        xpub: xpub.xpub,
+                        derivation_path: xpub
+                            .derivation_path
+                            .into_iter()
+                            .chain(path.iter())
+                            .cloned()
+                            .collect(),
+                        is_wildcard: false,
+                    })
+                } else {
+                    DescriptorPublicKey::XPub(xpub)
+                }
+            }
         }
     }
 }
@@ -610,6 +644,17 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
             //       the `scriptCode` is the `witnessScript` serialized as scripts inside CTxOut.
             Descriptor::Wsh(ref d) | Descriptor::ShWsh(ref d) => Ok(d.encode()),
         }
+    }
+}
+
+impl Descriptor<DescriptorPublicKey> {
+    /// Derives all wildcard keys in the descriptor using the supplied `path`
+    pub fn derive(&self, path: &[bip32::ChildNumber]) -> Descriptor<DescriptorPublicKey> {
+        self.translate_pk(
+            |pk| Result::Ok::<DescriptorPublicKey, ()>(pk.clone().derive(path)),
+            |pkh| Result::Ok::<hash160::Hash, ()>(*pkh),
+        )
+        .expect("Translation fn can't fail.")
     }
 }
 
