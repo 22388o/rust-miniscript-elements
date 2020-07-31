@@ -25,12 +25,22 @@ use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d};
 use bitcoin::{self, secp256k1};
 use {MiniscriptKey, ToPublicKey};
 
+use Error;
 use ScriptContext;
 use Terminal;
 
 /// Type alias for a signature/hashtype pair
 pub type BitcoinSig = (secp256k1::Signature, bitcoin::SigHashType);
 
+/// Helper function to create BitcoinSig from Rawsig
+/// Useful for downstream when implementing Satisfier.
+/// Returns underlying secp if the Signature is not of correct formart
+pub fn bitcoinsig_from_rawsig(rawsig: &[u8]) -> Result<BitcoinSig, Error> {
+    let (flag, sig) = rawsig.split_last().unwrap();
+    let flag = bitcoin::SigHashType::from_u32(*flag as u32);
+    let sig = secp256k1::Signature::from_der(sig)?;
+    Ok((sig, flag))
+}
 /// Trait describing a lookup table for signatures, hash preimages, etc.
 /// Every method has a default implementation that simply returns `None`
 /// on every query. Users are expected to override the methods that they
