@@ -12,6 +12,7 @@
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //
 
+use bitcoin::{self, SigHash, SigHashType};
 use std::fmt;
 use {Miniscript, MiniscriptKey, Terminal};
 
