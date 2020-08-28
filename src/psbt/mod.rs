@@ -24,22 +24,34 @@ use std::{error, fmt};
 use bitcoin::util::psbt;
 use bitcoin::util::psbt::PartiallySignedTransaction as Psbt;
 
+use bitcoin;
+use bitcoin::Script;
 use miniscript::satisfy::bitcoinsig_from_rawsig;
 use BitcoinSig;
 use MiniscriptKey;
 use Satisfier;
-use bitcoin;
 
 #[derive(Debug)]
 pub enum InputError {
-    /// Public key parsing error
-    InvalidPubkey { pubkey: Vec<u8> },
+    /// Get the secp Errors directly
+    SecpErr(bitcoin::secp256k1::Error),
+    /// Key errors
+    KeyErr(bitcoin::util::key::Error),
     /// Redeem script does not match the p2sh hash
-    InvalidRedeemScript,
+    InvalidRedeemScript {
+        redeem: Script,
+        p2sh_expected: Script,
+    },
     /// Witness script does not match the p2wsh hash
-    InvalidWitnessScript,
+    InvalidWitnessScript {
+        witness_script: Script,
+        p2wsh_expected: Script,
+    },
     /// Invalid sig
-    InvalidSignature { pubkey: bitcoin::PublicKey },
+    InvalidSignature {
+        pubkey: bitcoin::PublicKey,
+        sig: Vec<u8>,
+    },
     /// Pass through the underlying errors in miniscript
     MiniscriptError(super::Error),
     /// Missing redeem script for p2sh
@@ -73,23 +85,33 @@ pub enum Error {
 impl fmt::Display for InputError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            InputError::InvalidSignature { ref pubkey } => {
-                write!(f, "PSBT: bad signature with key {}", pubkey.key)
-            }
-            InputError::InvalidPubkey { ref pubkey } => {
-                write!(f, "PSBT: bad pubkey for bytes {:?}", pubkey)
-            }
-            InputError::InvalidRedeemScript => {
-                write!(f, "Redeem script does not match the p2sh script hash")
-            }
-            InputError::InvalidWitnessScript => {
-                write!(f, "Witness script does not match the p2wsh script hash")
-            }
+            InputError::InvalidSignature {
+                ref pubkey,
+                ref sig,
+            } => write!(f, "PSBT: bad signature {} for key {:?}", pubkey.key, sig),
+            InputError::KeyErr(ref e) => write!(f, "Key Err: {}", e),
+            InputError::SecpErr(ref e) => write!(f, "Secp Err: {}", e),
+            InputError::InvalidRedeemScript {
+                ref redeem,
+                ref p2sh_expected,
+            } => write!(
+                f,
+                "Redeem script {} does not match the p2sh script {}",
+                redeem, p2sh_expected
+            ),
+            InputError::InvalidWitnessScript {
+                ref witness_script,
+                ref p2wsh_expected,
+            } => write!(
+                f,
+                "Witness script {} does not match the p2wsh script {}",
+                witness_script, p2wsh_expected
+            ),
             InputError::MiniscriptError(ref e) => write!(f, "Miniscript Error: {}", e),
             InputError::MissingWitness => write!(f, "PSBT is missing witness"),
             InputError::MissingRedeemScript => write!(f, "PSBT is Redeem script"),
             InputError::MissingUtxo => {
-                write!(f, "PSBT is missing both witness and non-witnes UTXO")
+                write!(f, "PSBT is missing both witness and non-witness UTXO")
             }
             InputError::MissingWitnessScript => write!(f, "PSBT is missing witness script"),
             InputError::MissingPubkey => write!(f, "Missing pubkey for a pkh/wpkh"),
@@ -115,10 +137,23 @@ impl fmt::Display for InputError {
 }
 
 #[doc(hidden)]
-// Get error from userlying miniscript
 impl From<super::Error> for InputError {
     fn from(e: super::Error) -> InputError {
         InputError::MiniscriptError(e)
+    }
+}
+
+#[doc(hidden)]
+impl From<bitcoin::secp256k1::Error> for InputError {
+    fn from(e: bitcoin::secp256k1::Error) -> InputError {
+        InputError::SecpErr(e)
+    }
+}
+
+#[doc(hidden)]
+impl From<bitcoin::util::key::Error> for InputError {
+    fn from(e: bitcoin::util::key::Error) -> InputError {
+        InputError::KeyErr(e)
     }
 }
 
@@ -136,7 +171,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::InputError(ref inp_err, index) => write!(f, "{} at index {}", inp_err, index),
-            Error::WrongInputCount {in_tx, in_map } => write!(
+            Error::WrongInputCount { in_tx, in_map } => write!(
                 f,
                 "PSBT had {} inputs in transaction but {} inputs in map",
                 in_tx, in_map
