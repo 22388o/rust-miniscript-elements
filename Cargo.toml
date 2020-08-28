@@ -14,7 +14,7 @@ unstable = []
 default = []
 
 [dependencies]
-bitcoin = "0.23"
+bitcoin = {git = "https://github.com/rust-bitcoin/rust-bitcoin", commit = "e8bcde4d3871ed0bc68041bb6e9901f02acad7aa"}
 
 [dependencies.serde]
 version = "1.0"

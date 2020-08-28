@@ -14,7 +14,7 @@
 
 use bitcoin::{self, SigHash, SigHashType};
 use std::fmt;
-use {Miniscript, MiniscriptKey, Terminal};
+use {Descriptor, Miniscript, MiniscriptKey, Terminal, ToPublicKey};
 
 /// Error for Script Context
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -97,6 +97,27 @@ impl ScriptContext for Legacy {
     }
 }
 
+impl Legacy {
+    /// Computes a signature hash for a given input index with a given sighash flag.
+    /// To actually produce a scriptSig, this hash needs to be run through an
+    /// ECDSA signer, the SigHashType appended to the resulting sig, and a
+    /// script written around this, but this is the general (and hard) part.
+    ///
+    /// We don't have to deal with code separator related issues since
+    /// Miniscripts never really generate those
+    ///
+    /// # Panics
+    /// Panics if `input_index` is greater than or equal to `self.input.len()`
+    pub(crate) fn sighash<Pk: MiniscriptKey + ToPublicKey>(
+        tx: &bitcoin::Transaction,
+        des: &Descriptor<Pk>,
+        input_index: usize,
+        sighash_type: SigHashType,
+    ) -> SigHash {
+        tx.signature_hash(input_index, &des.witness_script(), sighash_type.as_u32())
+    }
+}
+
 /// Segwitv0 ScriptContext
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Segwitv0 {}
@@ -117,6 +138,28 @@ impl ScriptContext for Segwitv0 {
             }
             _ => Ok(()),
         }
+    }
+}
+
+impl Segwitv0 {
+    /// Computes a signature hash for a given input index with a given sighash flag
+    /// According to bip143.
+    ///
+    /// We don't have to deal with code separator related issues since
+    /// Miniscripts never really generate those
+    ///
+    /// # Panics
+    /// Panics if `input_index` is greater than or equal to `self.input.len()`
+    /// Panics if invoked on descriptor that does not have script_code.
+    pub(crate) fn sighash<Pk: MiniscriptKey + ToPublicKey>(
+        tx: &bitcoin::Transaction,
+        des: &Descriptor<Pk>,
+        input_index: usize,
+        value: u64,
+        sighash_type: SigHashType,
+    ) -> SigHash {
+        let mut sighash_cache = bitcoin::util::bip143::SigHashCache::new(tx);
+        sighash_cache.signature_hash(input_index, &des.witness_script(), value, sighash_type)
     }
 }
 
