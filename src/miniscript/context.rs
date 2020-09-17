@@ -82,7 +82,7 @@ impl ScriptContext for Legacy {
         frag: &Terminal<Pk, Ctx>,
     ) -> Result<(), ScriptContextError> {
         match *frag {
-            Terminal::PkH(ref _pkh) => Err(ScriptContextError::MalleablePkH),
+            Terminal::PkH(..) => Err(ScriptContextError::MalleablePkH),
             Terminal::OrI(ref _a, ref _b) => Err(ScriptContextError::MalleableOrI),
             Terminal::DupIf(ref _ms) => Err(ScriptContextError::MalleableDupIf),
             _ => Ok(()),

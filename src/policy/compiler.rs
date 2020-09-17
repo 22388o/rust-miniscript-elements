@@ -813,6 +813,7 @@ where
     match *policy {
         Concrete::Key(ref pk) => {
             insert_wrap!(AstElemExt::terminal(Terminal::PkH(
+                Some(pk.clone()),
                 pk.to_pubkeyhash().clone()
             )));
             insert_wrap!(AstElemExt::terminal(Terminal::PkK(pk.clone())));
@@ -1325,7 +1326,8 @@ mod tests {
             keys[7].to_pubkeyhash()
         );
 
-        assert_eq!(ms, ms_comp_res);
+        // We compare the Script encoding as the parsed miniscript could not detect the keys for PkHs.
+        assert_eq!(ms.encode(), ms_comp_res.encode());
 
         let mut abs = policy.lift();
         assert_eq!(abs.n_keys(), 8);

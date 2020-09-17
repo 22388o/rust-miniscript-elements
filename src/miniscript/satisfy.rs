@@ -520,7 +520,7 @@ impl Satisfaction {
                 stack: Witness::signature(stfr, pk),
                 has_sig: true,
             },
-            Terminal::PkH(ref pkh) => Satisfaction {
+            Terminal::PkH(_, ref pkh) => Satisfaction {
                 stack: Witness::pkh_signature(stfr, pkh),
                 has_sig: true,
             },
@@ -760,7 +760,7 @@ impl Satisfaction {
                 stack: Witness::push_0(),
                 has_sig: false,
             },
-            Terminal::PkH(ref pkh) => Satisfaction {
+            Terminal::PkH(_, ref pkh) => Satisfaction {
                 stack: Witness::combine(Witness::push_0(), Witness::pkh_public_key(stfr, pkh)),
                 has_sig: false,
             },

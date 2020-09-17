@@ -75,7 +75,10 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
     {
         let frag = match *self {
             Terminal::PkK(ref p) => Terminal::PkK(translatefpk(p)?),
-            Terminal::PkH(ref p) => Terminal::PkH(translatefpkh(p)?),
+            Terminal::PkH(ref pk, ref pkh) => match pk {
+                Some(pk) => Terminal::PkH(Some(translatefpk(pk)?), translatefpkh(pkh)?),
+                None => Terminal::PkH(None, translatefpkh(pkh)?),
+            },
             Terminal::After(n) => Terminal::After(n),
             Terminal::Older(n) => Terminal::Older(n),
             Terminal::Sha256(x) => Terminal::Sha256(x),
@@ -205,7 +208,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> fmt::Debug for Terminal<Pk, Ctx> {
         } else {
             match *self {
                 Terminal::PkK(ref pk) => write!(f, "pk_k({:?})", pk),
-                Terminal::PkH(ref pkh) => write!(f, "pk_h({:?})", pkh),
+                Terminal::PkH(_, ref pkh) => write!(f, "pk_h({:?})", pkh),
                 Terminal::After(t) => write!(f, "after({})", t),
                 Terminal::Older(t) => write!(f, "older({})", t),
                 Terminal::Sha256(h) => write!(f, "sha256({})", h),
@@ -255,7 +258,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> fmt::Display for Terminal<Pk, Ctx> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Terminal::PkK(ref pk) => write!(f, "pk_k({})", pk),
-            Terminal::PkH(ref pkh) => write!(f, "pk_h({})", pkh),
+            Terminal::PkH(_, ref pkh) => write!(f, "pk_h({})", pkh),
             Terminal::After(t) => write!(f, "after({})", t),
             Terminal::Older(t) => write!(f, "older({})", t),
             Terminal::Sha256(h) => write!(f, "sha256({})", h),
@@ -308,7 +311,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> fmt::Display for Terminal<Pk, Ctx> {
                         if let Terminal::PkK(ref pk) = sub.node {
                             // alias: pk(K) = c:pk_k(K)
                             return write!(f, "pk({})", pk);
-                        } else if let Terminal::PkH(ref pkh) = sub.node {
+                        } else if let Terminal::PkH(_, ref pkh) = sub.node {
                             // alias: pkh(K) = c:pk_h(K)
                             return write!(f, "pkh({})", pkh);
                         }
@@ -324,7 +327,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> fmt::Display for Terminal<Pk, Ctx> {
                         Some(('c', ms)) => {
                             if let Terminal::PkK(ref _pk) = ms.node {
                                 fmt::Write::write_char(f, ':')?;
-                            } else if let Terminal::PkH(ref _pkh) = ms.node {
+                            } else if let Terminal::PkH(_, ref _pkh) = ms.node {
                                 fmt::Write::write_char(f, ':')?;
                             }
                         }
@@ -407,9 +410,9 @@ where
             ("pk_k", 1) => {
                 expression::terminal(&top.args[0], |x| Pk::from_str(x).map(Terminal::PkK))
             }
-            ("pk_h", 1) => {
-                expression::terminal(&top.args[0], |x| Pk::Hash::from_str(x).map(Terminal::PkH))
-            }
+            ("pk_h", 1) => expression::terminal(&top.args[0], |x| {
+                Pk::Hash::from_str(x).map(|x| Terminal::PkH(None, x))
+            }),
             ("after", 1) => expression::terminal(&top.args[0], |x| {
                 expression::parse_num(x).map(Terminal::After)
             }),
@@ -570,7 +573,7 @@ impl<Pk: MiniscriptKey + ToPublicKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
     pub fn encode(&self, mut builder: script::Builder) -> script::Builder {
         match *self {
             Terminal::PkK(ref pk) => builder.push_key(&pk.to_public_key()),
-            Terminal::PkH(ref hash) => builder
+            Terminal::PkH(_, ref hash) => builder
                 .push_opcode(opcodes::all::OP_DUP)
                 .push_opcode(opcodes::all::OP_HASH160)
                 .push_slice(&Pk::hash_to_hash160(&hash)[..])

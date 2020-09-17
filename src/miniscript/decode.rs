@@ -71,7 +71,7 @@ pub enum Terminal<Pk: MiniscriptKey, Ctx: ScriptContext> {
     /// `<key>`
     PkK(Pk),
     /// `DUP HASH160 <keyhash> EQUALVERIFY`
-    PkH(Pk::Hash),
+    PkH(Option<Pk>, Pk::Hash),
     // timelocks
     /// `n CHECKLOCKTIMEVERIFY`
     After(u32),
@@ -240,6 +240,7 @@ pub fn parse<Ctx: ScriptContext>(
                             tokens,
                             Tk::Hash20(hash), Tk::Hash160, Tk::Dup => {
                                 term.reduce0(Terminal::PkH(
+                                    None,
                                     hash160::Hash::from_inner(hash)
                                 ))?
                             },
