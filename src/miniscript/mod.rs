@@ -219,7 +219,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     ) -> Result<Miniscript<Q, Ctx>, FuncError>
     where
         FPk: FnMut(&Pk) -> Result<Q, FuncError>,
-        FPkh: FnMut(&Pk::Hash) -> Result<Q::Hash, FuncError>,
+        FPkh: FnMut(&Option<Pk>, &Pk::Hash) -> Result<(Option<Q>, Q::Hash), FuncError>,
         Q: MiniscriptKey,
     {
         let inner = self.node.translate_pk(translatefpk, translatefpkh)?;
@@ -373,7 +373,7 @@ mod tests {
         assert_eq!(roundtrip, script);
 
         let translated: Result<_, ()> =
-            script.translate_pk(&mut |k| Ok(k.clone()), &mut |h| Ok(h.clone()));
+            script.translate_pk(&mut |k| Ok(k.clone()), &mut |_, h| Ok((None, h.clone())));
         assert_eq!(translated, Ok(script));
     }
 

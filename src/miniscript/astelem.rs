@@ -70,15 +70,15 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
     ) -> Result<Terminal<Q, Ctx>, Error>
     where
         FPk: FnMut(&Pk) -> Result<Q, Error>,
-        FPkh: FnMut(&Pk::Hash) -> Result<Q::Hash, Error>,
+        FPkh: FnMut(&Option<Pk>, &Pk::Hash) -> Result<(Option<Q>, Q::Hash), Error>,
         Q: MiniscriptKey,
     {
         let frag = match *self {
             Terminal::PkK(ref p) => Terminal::PkK(translatefpk(p)?),
-            Terminal::PkH(ref pk, ref pkh) => match pk {
-                Some(pk) => Terminal::PkH(Some(translatefpk(pk)?), translatefpkh(pkh)?),
-                None => Terminal::PkH(None, translatefpkh(pkh)?),
-            },
+            Terminal::PkH(ref pk, ref pkh) => {
+                let (pk, pkh) = translatefpkh(pk, pkh)?;
+                Terminal::PkH(pk, pkh)
+            }
             Terminal::After(n) => Terminal::After(n),
             Terminal::Older(n) => Terminal::Older(n),
             Terminal::Sha256(x) => Terminal::Sha256(x),

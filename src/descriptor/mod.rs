@@ -329,7 +329,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     ) -> Result<Descriptor<Q>, E>
     where
         Fpk: FnMut(&Pk) -> Result<Q, E>,
-        Fpkh: FnMut(&Pk::Hash) -> Result<Q::Hash, E>,
+        Fpkh: FnMut(&Option<Pk>, &Pk::Hash) -> Result<(Option<Q>, Q::Hash), E>,
         Q: MiniscriptKey,
     {
         match *self {
@@ -678,12 +678,26 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
 
 impl Descriptor<DescriptorPublicKey> {
     /// Derives all wildcard keys in the descriptor using the supplied `path`
-    pub fn derive(&self, path: &[bip32::ChildNumber]) -> Descriptor<DescriptorPublicKey> {
+    pub fn derive(
+        &self,
+        path: &[bip32::ChildNumber],
+    ) -> Result<Descriptor<DescriptorPublicKey>, Error> {
         self.translate_pk(
             |pk| Result::Ok::<DescriptorPublicKey, ()>(pk.clone().derive(path)),
-            |pkh| Result::Ok::<hash160::Hash, ()>(*pkh),
+            |pk, _| match *pk {
+                Some(ref pk) => {
+                    let child = pk.clone().derive(path);
+                    let child_hash = child.to_pubkeyhash();
+                    Result::Ok::<(Option<DescriptorPublicKey>, hash160::Hash), ()>((
+                        Some(child),
+                        child_hash,
+                    ))
+                }
+                None => Err(()),
+            },
         )
-        .expect("Translation fn can't fail.")
+        .map_err(|_| Error::BadDescriptor)
+        //.expect("Translation fn can't fail.")
     }
 }
 
@@ -1496,8 +1510,9 @@ pk(xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHW
 pk(03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8))";
         let policy: policy::concrete::Policy<DescriptorPublicKey> = descriptor_str.parse().unwrap();
         let descriptor = Descriptor::Sh(policy.compile().unwrap());
-        let derived_descriptor =
-            descriptor.derive(&[bip32::ChildNumber::from_normal_idx(42).unwrap()]);
+        let derived_descriptor = descriptor
+            .derive(&[bip32::ChildNumber::from_normal_idx(42).unwrap()])
+            .expect("Deriving descriptor");
 
         let res_descriptor_str = "thresh(2,\
 pk([d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/42),\
