@@ -37,6 +37,10 @@ use {Error, MiniscriptKey};
 /// to assist the compiler
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Policy<Pk: MiniscriptKey> {
+    /// Unsatisfiable
+    Unsatisfiable,
+    /// Trivially satisfiable
+    Trivial,
     /// A public key which must sign to satisfy the descriptor
     Key(Pk),
     /// An absolute locktime restriction
@@ -141,6 +145,8 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
         Q: MiniscriptKey,
     {
         match *self {
+            Policy::Unsatisfiable => Ok(Policy::Unsatisfiable),
+            Policy::Trivial => Ok(Policy::Trivial),
             Policy::Key(ref pk) => translatefpk(pk).map(Policy::Key),
             Policy::Sha256(ref h) => Ok(Policy::Sha256(h.clone())),
             Policy::Hash256(ref h) => Ok(Policy::Hash256(h.clone())),
@@ -221,6 +227,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     ///
     pub fn is_safe_nonmalleable(&self) -> (bool, bool) {
         match *self {
+            Policy::Unsatisfiable | Policy::Trivial => (true, true),
             Policy::Key(_) => (true, true),
             Policy::Sha256(_)
             | Policy::Hash256(_)
@@ -267,6 +274,8 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
 impl<Pk: MiniscriptKey> fmt::Debug for Policy<Pk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Policy::Unsatisfiable => f.write_str("UNSATISFIABLE()"),
+            Policy::Trivial => f.write_str("TRIVIAL()"),
             Policy::Key(ref pk) => write!(f, "pk({:?})", pk),
             Policy::After(n) => write!(f, "after({})", n),
             Policy::Older(n) => write!(f, "older({})", n),
@@ -308,6 +317,8 @@ impl<Pk: MiniscriptKey> fmt::Debug for Policy<Pk> {
 impl<Pk: MiniscriptKey> fmt::Display for Policy<Pk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Policy::Unsatisfiable => f.write_str("UNSATISFIABLE"),
+            Policy::Trivial => f.write_str("TRIVIAL"),
             Policy::Key(ref pk) => write!(f, "pk({})", pk),
             Policy::After(n) => write!(f, "after({})", n),
             Policy::Older(n) => write!(f, "older({})", n),
@@ -403,6 +414,8 @@ where
             }
         }
         match (frag_name, top.args.len() as u32) {
+            ("UNSATISFIABLE", 0) => Ok(Policy::Unsatisfiable),
+            ("TRIVIAL", 0) => Ok(Policy::Trivial),
             ("pk", 1) => expression::terminal(&top.args[0], |pk| Pk::from_str(pk).map(Policy::Key)),
             ("after", 1) => {
                 let num = expression::terminal(&top.args[0], |x| expression::parse_num(x))?;

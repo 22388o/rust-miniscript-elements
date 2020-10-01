@@ -811,6 +811,12 @@ where
     }
 
     match *policy {
+        Concrete::Unsatisfiable => {
+            insert_wrap!(AstElemExt::terminal(Terminal::False));
+        }
+        Concrete::Trivial => {
+            insert_wrap!(AstElemExt::terminal(Terminal::True));
+        }
         Concrete::Key(ref pk) => {
             insert_wrap!(AstElemExt::terminal(Terminal::PkH(
                 pk.to_pubkeyhash().clone()
