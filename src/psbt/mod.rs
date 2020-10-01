@@ -234,6 +234,16 @@ impl<'psbt, Pk: MiniscriptKey + ToPublicKey> Satisfier<Pk> for PsbtInputSatisfie
             None
         }
     }
+
+    fn check_after(&self, n: u32) -> bool {
+        let cltv = self.psbt.global.unsigned_tx.lock_time;
+        n <= cltv
+    }
+
+    fn check_older(&self, n: u32) -> bool {
+        let csv = self.psbt.global.unsigned_tx.input[self.index].sequence;
+        n <= csv
+    }
 }
 
 fn sanity_check(psbt: &Psbt) -> Result<(), Error> {
