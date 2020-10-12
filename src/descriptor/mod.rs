@@ -26,13 +26,13 @@
 use std::fmt;
 use std::str::{self, FromStr};
 
-use elements::{opcodes, script, AddressParams};
+use bitcoin;
 use bitcoin::hashes::hash160;
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::secp256k1;
 use bitcoin::util::bip32;
-use bitcoin;
 use elements::Script;
+use elements::{opcodes, script, AddressParams};
 
 #[cfg(feature = "serde")]
 use serde::{de, ser};
@@ -46,6 +46,9 @@ use MiniscriptKey;
 use Satisfier;
 use ToPublicKey;
 
+mod covenants;
+
+use self::covenants::{CovenantAddressCtx, CovenantCtx};
 // mod create_descriptor;
 // mod satisfied_constraints;
 
@@ -74,6 +77,8 @@ pub enum Descriptor<Pk: MiniscriptKey> {
     Wsh(Miniscript<Pk, Segwitv0>),
     /// P2SH-P2WSH with Segwitv0 context
     ShWsh(Miniscript<Pk, Segwitv0>),
+    /// Covenant Desciptor
+    Cov(CovenantCtx<Pk>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Ord, PartialOrd, Hash)]
@@ -368,6 +373,13 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
             Descriptor::ShWsh(ref ms) => Ok(Descriptor::ShWsh(
                 ms.translate_pk(&mut translatefpk, &mut translatefpkh)?,
             )),
+            Descriptor::Cov(ref cov) => Ok(Descriptor::Cov(CovenantCtx {
+                spend_ctx: None, //FIXME later if required
+                commit_ctx: CovenantAddressCtx {
+                    cov_info: cov.commit_ctx.cov_info.clone(),
+                    redeem_pk: translatefpk(&cov.commit_ctx.redeem_pk)?,
+                },
+            })),
         }
     }
 }
@@ -378,22 +390,33 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
         match *self {
             Descriptor::Bare(..) => None,
             Descriptor::Pk(..) => None,
-            Descriptor::Pkh(ref pk) => Some(elements::Address::p2pkh(&pk.to_public_key(), None, network)),
-            Descriptor::Wpkh(ref pk) => Some(
-                elements::Address::p2wpkh(&pk.to_public_key(), None, network)
-            ),
-            Descriptor::ShWpkh(ref pk) => Some(
-                elements::Address::p2shwpkh(&pk.to_public_key(), None, network)
-            ),
+            Descriptor::Pkh(ref pk) => {
+                Some(elements::Address::p2pkh(&pk.to_public_key(), None, network))
+            }
+            Descriptor::Wpkh(ref pk) => Some(elements::Address::p2wpkh(
+                &pk.to_public_key(),
+                None,
+                network,
+            )),
+            Descriptor::ShWpkh(ref pk) => Some(elements::Address::p2shwpkh(
+                &pk.to_public_key(),
+                None,
+                network,
+            )),
             Descriptor::Sh(ref miniscript) => {
                 Some(elements::Address::p2sh(&miniscript.encode(), None, network))
             }
-            Descriptor::Wsh(ref miniscript) => {
-                Some(elements::Address::p2wsh(&miniscript.encode(), None, network))
-            }
-            Descriptor::ShWsh(ref miniscript) => {
-                Some(elements::Address::p2shwsh(&miniscript.encode(), None, network))
-            }
+            Descriptor::Wsh(ref miniscript) => Some(elements::Address::p2wsh(
+                &miniscript.encode(),
+                None,
+                network,
+            )),
+            Descriptor::ShWsh(ref miniscript) => Some(elements::Address::p2shwsh(
+                &miniscript.encode(),
+                None,
+                network,
+            )),
+            Descriptor::Cov(ref cov) => Some(cov.commit_ctx.address()),
         }
     }
 
@@ -406,21 +429,27 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
                 .push_opcode(opcodes::all::OP_CHECKSIG)
                 .into_script(),
             Descriptor::Pkh(ref pk) => {
-                let addr = elements::Address::p2pkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
+                let addr =
+                    elements::Address::p2pkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
                 addr.script_pubkey()
             }
             Descriptor::Wpkh(ref pk) => {
-                let addr = elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
+                let addr =
+                    elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
                 addr.script_pubkey()
             }
             Descriptor::ShWpkh(ref pk) => {
-                let addr =
-                    elements::Address::p2shwpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
+                let addr = elements::Address::p2shwpkh(
+                    &pk.to_public_key(),
+                    None,
+                    &AddressParams::ELEMENTS,
+                );
                 addr.script_pubkey()
             }
             Descriptor::Sh(ref miniscript) => miniscript.encode().to_p2sh(),
             Descriptor::Wsh(ref miniscript) => miniscript.encode().to_v0_p2wsh(),
             Descriptor::ShWsh(ref miniscript) => miniscript.encode().to_v0_p2wsh().to_p2sh(),
+            Descriptor::Cov(ref cov) => cov.commit_ctx.script_pubkey().to_v0_p2wsh(),
         }
     }
 
@@ -443,7 +472,8 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
             Descriptor::Wsh(..) | Descriptor::Wpkh(..) => Script::new(),
             // segwit+p2sh
             Descriptor::ShWpkh(ref pk) => {
-                let addr = elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
+                let addr =
+                    elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
                 let redeem_script = addr.script_pubkey();
                 script::Builder::new()
                     .push_slice(&redeem_script[..])
@@ -455,6 +485,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
                     .push_slice(&witness_script.to_v0_p2wsh()[..])
                     .into_script()
             }
+            Descriptor::Cov(ref _c) => Script::new(),
         }
     }
 
@@ -469,11 +500,13 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
             | Descriptor::Pkh(..)
             | Descriptor::Wpkh(..) => self.script_pubkey(),
             Descriptor::ShWpkh(ref pk) => {
-                let addr = elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
+                let addr =
+                    elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
                 addr.script_pubkey()
             }
             Descriptor::Sh(ref d) => d.encode(),
             Descriptor::Wsh(ref d) | Descriptor::ShWsh(ref d) => d.encode(),
+            Descriptor::Cov(ref cov) => cov.commit_ctx.script_pubkey(),
         }
     }
 
@@ -548,8 +581,11 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
                 if let Some(sig) = satisfier.lookup_sig(pk) {
                     let mut sig_vec = sig.0.serialize_der().to_vec();
                     sig_vec.push(sig.1.as_u32() as u8);
-                    let addr =
-                        elements::Address::p2wpkh(&pk.to_public_key(), None, &AddressParams::ELEMENTS);
+                    let addr = elements::Address::p2wpkh(
+                        &pk.to_public_key(),
+                        None,
+                        &AddressParams::ELEMENTS,
+                    );
                     let redeem_script = addr.script_pubkey();
 
                     let script_sig = script::Builder::new()
@@ -593,6 +629,8 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
                 witness.push(witness_script.into_bytes());
                 Ok((witness, script_sig))
             }
+            // API can be improved, not rquired as of now
+            Descriptor::Cov(ref cov) => Ok((cov.clone().finalize(), Script::new())),
         }
     }
     /// Attempts to produce a satisfying witness and scriptSig to spend an
@@ -659,6 +697,10 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
                     + varint_len(ms.max_satisfaction_witness_elements())
                     + ms.max_satisfaction_size(2)
             }
+            Descriptor::Cov(ref cov) => {
+                let script_size = cov.commit_ctx.script_pubkey().len();
+                4 * 36 + varint_len(script_size) + script_size + varint_len(11) + 700
+            }
         }
     }
 
@@ -677,12 +719,14 @@ impl<Pk: MiniscriptKey + ToPublicKey> Descriptor<Pk> {
             // The item 5:
             //     - For P2WPKH witness program, the scriptCode is `0x1976a914{20-byte-pubkey-hash}88ac`.
             Descriptor::Wpkh(ref pk) | Descriptor::ShWpkh(ref pk) => {
-                let addr = elements::Address::p2pkh(&pk.to_public_key(), None, &&AddressParams::ELEMENTS);
+                let addr =
+                    elements::Address::p2pkh(&pk.to_public_key(), None, &&AddressParams::ELEMENTS);
                 addr.script_pubkey()
             }
             //     - For P2WSH witness program, if the witnessScript does not contain any `OP_CODESEPARATOR`,
             //       the `scriptCode` is the `witnessScript` serialized as scripts inside CTxOut.
             Descriptor::Wsh(ref d) | Descriptor::ShWsh(ref d) => d.encode(),
+            Descriptor::Cov(ref cov) => cov.commit_ctx.script_pubkey(),
         }
     }
 }
@@ -765,7 +809,7 @@ where
                 } else {
                     Ok(Descriptor::Bare(sub))
                 }
-            }
+            } //TODO: If required add string parsing logic
         }
     }
 }
@@ -801,6 +845,7 @@ impl<Pk: MiniscriptKey> fmt::Debug for Descriptor<Pk> {
             Descriptor::Sh(ref sub) => write!(f, "sh({:?})", sub),
             Descriptor::Wsh(ref sub) => write!(f, "wsh({:?})", sub),
             Descriptor::ShWsh(ref sub) => write!(f, "sh(wsh({:?}))", sub),
+            Descriptor::Cov(ref cov) => write!(f, "cov({:?})", cov),
         }
     }
 }
@@ -816,6 +861,11 @@ impl<Pk: MiniscriptKey> fmt::Display for Descriptor<Pk> {
             Descriptor::Sh(ref sub) => write!(f, "sh({})", sub),
             Descriptor::Wsh(ref sub) => write!(f, "wsh({})", sub),
             Descriptor::ShWsh(ref sub) => write!(f, "sh(wsh({}))", sub),
+            Descriptor::Cov(ref cov) => write!(
+                f,
+                "cov({}, {})",
+                cov.commit_ctx.redeem_pk, cov.commit_ctx.cov_info.traded_asset
+            ),
         }
     }
 }
@@ -826,12 +876,12 @@ serde_string_impl_pk!(Descriptor, "a script descriptor");
 mod tests {
     use super::DescriptorKeyParseError;
 
-    use elements::opcodes::all::{OP_CLTV, OP_CSV};
-    use elements::script::Instruction;
     use bitcoin::hashes::hex::FromHex;
     use bitcoin::util::bip32;
     use bitcoin::{self, PublicKey};
     use descriptor::{DescriptorPublicKey, DescriptorSinglePub, DescriptorXPub};
+    use elements::opcodes::all::{OP_CLTV, OP_CSV};
+    use elements::script::Instruction;
     use std::str::FromStr;
     use {Descriptor, DummyKey};
 
@@ -918,7 +968,6 @@ mod tests {
             "unexpected «no arguments given»"
         )
     }
-
 
     #[test]
     fn test_scriptcode() {

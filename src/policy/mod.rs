@@ -125,6 +125,9 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Descriptor<Pk> {
             | Descriptor::Pkh(ref p)
             | Descriptor::Wpkh(ref p)
             | Descriptor::ShWpkh(ref p) => Semantic::KeyHash(p.to_pubkeyhash()),
+            Descriptor::Cov(ref _cov) => {
+                unimplemented!("Semantic analysis not supported for covenants yet!")
+            }
         })
     }
 }
