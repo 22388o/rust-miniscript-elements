@@ -138,6 +138,7 @@ impl ScriptContext for Any {
 }
 
 impl Any {
+    #[allow(dead_code)]
     pub(crate) fn from_legacy<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Legacy>,
     ) -> &Miniscript<Pk, Any> {
@@ -151,6 +152,7 @@ impl Any {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn from_segwitv0<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Segwitv0>,
     ) -> &Miniscript<Pk, Any> {

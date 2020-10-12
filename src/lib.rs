@@ -70,8 +70,8 @@
 //!
 //!     // Derive the P2SH address
 //!     assert_eq!(
-//!         desc.address(bitcoin::Network::Bitcoin).unwrap().to_string(),
-//!         "32aAVauGwencZwisuvd3anhhhQhNZQPyHv"
+//!         desc.address(&elements::AddressParams::ELEMENTS).unwrap().to_string(),
+//!         "XCEPRBmSeHDwpHUwdHwMXZkmkijQJDn3gx"
 //!     );
 //!
 //!     // Estimate the satisfaction cost
@@ -83,6 +83,7 @@
 #![allow(bare_trait_objects)]
 #![cfg_attr(all(test, feature = "unstable"), feature(test))]
 pub extern crate bitcoin;
+pub extern crate elements;
 #[cfg(feature = "serde")]
 pub extern crate serde;
 #[cfg(all(test, feature = "unstable"))]
@@ -95,15 +96,14 @@ pub mod descriptor;
 pub mod expression;
 pub mod miniscript;
 pub mod policy;
-pub mod psbt;
 
 use std::str::FromStr;
 use std::{error, fmt, hash, str};
 
-use bitcoin::blockdata::{opcodes, script};
+use elements::{opcodes, script};
 use bitcoin::hashes::{hash160, sha256, Hash};
 
-pub use descriptor::{Descriptor, SatisfiedConstraints};
+pub use descriptor::Descriptor;
 pub use miniscript::context::{Legacy, ScriptContext, Segwitv0};
 pub use miniscript::decode::Terminal;
 pub use miniscript::satisfy::{BitcoinSig, Satisfier};
@@ -322,8 +322,6 @@ pub enum Error {
     CompilerError(policy::compiler::CompilerError),
     ///Errors related to policy
     PolicyError(policy::concrete::PolicyError),
-    ///Interpreter related errors
-    InterpreterError(descriptor::InterpreterError),
     /// Forward script context related errors
     ContextError(miniscript::context::ScriptContextError),
     /// Bad Script Sig. As per standardness rules, only pushes are allowed in
@@ -434,7 +432,6 @@ impl fmt::Display for Error {
             Error::TypeCheck(ref e) => write!(f, "typecheck: {}", e),
             Error::BadDescriptor => f.write_str("could not create a descriptor"),
             Error::Secp(ref e) => fmt::Display::fmt(e, f),
-            Error::InterpreterError(ref e) => fmt::Display::fmt(e, f),
             Error::ContextError(ref e) => fmt::Display::fmt(e, f),
             #[cfg(feature = "compiler")]
             Error::CompilerError(ref e) => fmt::Display::fmt(e, f),
@@ -477,12 +474,6 @@ impl From<policy::concrete::PolicyError> for Error {
     }
 }
 
-#[doc(hidden)]
-impl From<descriptor::InterpreterError> for Error {
-    fn from(e: descriptor::InterpreterError) -> Error {
-        Error::InterpreterError(e)
-    }
-}
 
 /// The size of an encoding of a number in Script
 pub fn script_num_size(n: usize) -> usize {
@@ -498,7 +489,7 @@ pub fn script_num_size(n: usize) -> usize {
 
 /// Helper function used by tests
 #[cfg(test)]
-fn hex_script(s: &str) -> bitcoin::Script {
-    let v: Vec<u8> = bitcoin::hashes::hex::FromHex::from_hex(s).unwrap();
-    bitcoin::Script::from(v)
+fn hex_script(s: &str) -> elements::Script {
+    let v: Vec<u8> = elements::bitcoin_hashes::hex::FromHex::from_hex(s).unwrap();
+    elements::Script::from(v)
 }

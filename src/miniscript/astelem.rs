@@ -21,7 +21,7 @@
 
 use std::{cmp, fmt, str};
 
-use bitcoin::blockdata::{opcodes, script};
+use elements::{opcodes, script};
 use bitcoin::hashes::hex::FromHex;
 use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
 

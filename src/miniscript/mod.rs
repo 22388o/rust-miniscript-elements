@@ -28,7 +28,7 @@ use std::marker::PhantomData;
 use std::{fmt, str};
 
 use bitcoin;
-use bitcoin::blockdata::script;
+use elements::script;
 
 pub use self::context::Legacy;
 pub use self::context::Segwitv0;

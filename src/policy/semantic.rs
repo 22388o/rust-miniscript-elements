@@ -554,7 +554,7 @@ mod tests {
     fn semantic_analysis() {
         let policy = StringPolicy::from_str("pkh()").unwrap();
         assert_eq!(policy, Policy::KeyHash("".to_owned()));
-        assert_eq!(policy.relative_timelocks(), vec![]);
+        assert!(policy.relative_timelocks().is_empty());
         assert_eq!(policy.clone().at_age(0), policy.clone());
         assert_eq!(policy.clone().at_age(10000), policy.clone());
         assert_eq!(policy.n_keys(), 1);
