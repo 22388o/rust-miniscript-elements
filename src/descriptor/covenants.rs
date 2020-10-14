@@ -485,17 +485,17 @@ mod cov_scripts {
 
     // Assumes the following form for the numbers
     // [high_bits_a, high_bits_b, low_bits_b, low_bits_a]
-    // b <= a
+    // a <= b
     fn compare_script_nums(builder: Builder, stk_size: &mut i64) -> Builder {
         let builder = builder
-            .push_opcode(OP_LESSTHANOREQUAL)
+            .push_opcode(OP_GREATERTHANOREQUAL)
             .push_opcode(OP_TOALTSTACK);
 
         let builder = builder
             .push_opcode(OP_2DUP)
             .push_opcode(OP_EQUAL)
             .push_opcode(OP_TOALTSTACK)
-            .push_opcode(OP_GREATERTHAN)
+            .push_opcode(OP_LESSTHAN)
             .push_opcode(OP_FROMALTSTACK)
             .push_opcode(OP_FROMALTSTACK)
             .push_opcode(OP_BOOLAND)
@@ -755,7 +755,7 @@ mod cov_scripts {
         // Now compute the entire fees.
         let builder = builder
             .push_opcode(OP_DUP)
-            .push_int(2)
+            .push_int(2 + 3)
             .push_int(3)
             .push_opcode(OP_SUBSTR);
         let builder = convert_to_script_num_helper(builder, &mut stk_size);
@@ -763,7 +763,7 @@ mod cov_scripts {
         let builder = builder
             .push_opcode(OP_SWAP)
             .push_opcode(OP_DUP)
-            .push_int(2 + 3)
+            .push_int(2)
             .push_int(3)
             .push_opcode(OP_SUBSTR);
         let builder = convert_to_script_num_helper(builder, &mut stk_size);
@@ -794,14 +794,14 @@ mod cov_scripts {
         assert_eq!(stk_size, 8);
         let builder = builder
             .push_opcode(OP_DUP)
-            .push_int(0)
+            .push_int(3)
             .push_int(3)
             .push_opcode(OP_SUBSTR);
         let builder = convert_to_script_num_helper(builder, &mut stk_size);
         stk_size += 1;
         let builder = builder
             .push_opcode(OP_SWAP)
-            .push_int(3)
+            .push_int(0)
             .push_int(3)
             .push_opcode(OP_SUBSTR);
         stk_size += 0;
