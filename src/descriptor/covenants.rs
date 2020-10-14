@@ -735,7 +735,7 @@ mod cov_scripts {
         let builder = builder
             .push_int(stk_size - 3)
             .push_opcode(OP_ROLL)
-            .push_int(stk_size - 2)
+            .push_int(stk_size - 3)
             .push_opcode(OP_ROLL)
             .push_slice(&[0xff, 0xff, 0xff, 0xff, 0xff]);
         stk_size += 1;
