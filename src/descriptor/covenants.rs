@@ -121,7 +121,7 @@ fn sign_timestamp(txid: [u8; 32]) -> ([u8; 32], secp256k1::Signature) {
     let time = [13u8; 32]; // do the encoding stuff properly here
     eng.input(&time);
     eng.input(&txid);
-    let msg = secp256k1::Message::from_slice(&sha256::Hash::from_engine(eng)).unwrap();
+    let msg = secp256k1::Message::from_slice(&SigHash::from_engine(eng)).unwrap();
     let secp = Secp256k1::signing_only();
     (time, secp.sign(&msg, &timestamp_srv_priv_key.key))
 }
@@ -175,7 +175,7 @@ fn sign_fee(time: [u8; 32]) -> (Vec<u8>, secp256k1::Signature) {
     let fee = calc_fee_repr(100); // do the encoding stuff properly here
     eng.input(&time);
     eng.input(&fee);
-    let msg = secp256k1::Message::from_slice(&sha256::Hash::from_engine(eng)).unwrap();
+    let msg = secp256k1::Message::from_slice(&SigHash::from_engine(eng)).unwrap();
     let secp = Secp256k1::signing_only();
     (fee, secp.sign(&msg, &fee_collector_srv_priv_key.key))
 }
