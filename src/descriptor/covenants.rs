@@ -260,10 +260,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> CovenantCtx<Pk> {
                 confidential::Value::Explicit(0x0000000005f5e100),
                 sighash_type,
             );
-            // let mut enc = SigHash::engine();
-            // println!("{:x?}", &actual_result);
-            // println!("{:x?}", serialize(&spend_tx.output[0].script_pubkey));
-            // assert_eq!(actual_result[8], SigHash::hash(&ser_out).into_inner());
+
             let secp = Secp256k1::new();
             sighash_msg = actual_result.clone().into_iter().flatten().collect();
             let mut eng = SigHash::engine();
@@ -296,8 +293,17 @@ impl<Pk: MiniscriptKey + ToPublicKey> CovenantCtx<Pk> {
                 Vec::from(time),
                 Vec::from(fee),
                 Vec::from(fee_sig.serialize_der().as_ref()),
-                sighash_msg,
-                pre_code,
+                vec![8], //fee elem
+                Vec::from(&sighash_msg[0..80]),
+                Vec::from(&sighash_msg[80..160]),
+                Vec::from(&sighash_msg[160..240]),
+                Vec::from(&sighash_msg[240..]),
+                Vec::from(&pre_code[0..80]),
+                Vec::from(&pre_code[80..160]),
+                Vec::from(&pre_code[160..240]),
+                Vec::from(&pre_code[240..320]),
+                Vec::from(&pre_code[320..400]),
+                Vec::from(&pre_code[400..]),
                 script_pubkey.into_bytes(),
             ];
         }
@@ -351,14 +357,197 @@ mod cov_scripts {
         builder
     }
 
+    fn swap_bits(
+        builder: Builder,
+        mask0: &[u8],
+        mask0_suf: &[u8],
+        mask1_suf: &[u8],
+        mask2_suf: &[u8],
+    ) -> Builder {
+        let builder = builder
+            .push_slice(mask0)
+            .push_opcode(OP_DUP)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_DUP)
+            .push_slice(mask0_suf)
+            .push_opcode(OP_CAT)
+            .push_int(2)
+            .push_opcode(OP_PICK)
+            .push_opcode(OP_AND)
+            .push_int(16)
+            .push_opcode(OP_RSHIFT)
+            .push_opcode(OP_SWAP);
+
+        let builder = builder
+            .push_opcode(OP_DUP)
+            .push_int(8)
+            .push_opcode(OP_RSHIFT)
+            .push_slice(mask1_suf)
+            .push_opcode(OP_CAT)
+            .push_int(3)
+            .push_opcode(OP_PICK)
+            .push_opcode(OP_AND)
+            .push_int(0)
+            .push_opcode(OP_LSHIFT)
+            .push_opcode(OP_SWAP);
+
+        let builder = builder
+            .push_int(16)
+            .push_opcode(OP_RSHIFT)
+            .push_slice(mask2_suf)
+            .push_opcode(OP_CAT)
+            .push_int(3)
+            .push_opcode(OP_ROLL)
+            .push_opcode(OP_AND)
+            .push_int(16)
+            .push_opcode(OP_LSHIFT);
+
+        // let builder = builder
+        //     .push_int(16)
+        //     .push_opcode(OP_RIGHT)
+        //     .push_slice(mask2_suf)
+        //     .push_opcode(OP_CAT);
+
+        // let builder = builder
+        //     .push_int(3)
+        //     .push_opcode(OP_PICK)
+        //     .push_opcode(OP_AND)
+        //     .push_int(16)
+        //     .push_opcode(OP_RSHIFT)
+        //     .push_opcode(OP_SWAP);
+        //     let builder = builder
+        //     .push_int(3)
+        //     .push_opcode(OP_PICK)
+        //     .push_opcode(OP_AND)
+        //     .push_int(16)
+        //     .push_opcode(OP_RSHIFT)
+        //     .push_opcode(OP_SWAP);
+
+        builder.push_opcode(OP_OR).push_opcode(OP_OR)
+    }
+
+    // Assumes a pre-pended slice 0xff*7 + a + b where a and b need to be reversed
+    fn reverse_bits(builder: Builder, stk_size: &mut i64) -> Builder {
+        let num_elems = 1;
+
+        // following are 7 byte vectors required for reverse calculation
+        let mask1_suffix = Vec::from([0x00u8, 0x00, 0xff, 0xff, 0xff]);
+        let mask2_suffix = Vec::from([0x00, 0xffu8, 0xffu8, 0xffu8, 0x00u8, 0x00u8]);
+        let mask3_suffix = Vec::from([0x00, 0x00, 0xffu8, 0x00u8, 0x00u8, 0x00u8, 0x00u8]);
+
+        // Swap first two bytes
+        let zero_byte_mask =
+            vec![vec![0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0xffu8,]; num_elems];
+        let zero_byte_mask: Vec<u8> = zero_byte_mask.into_iter().flatten().collect();
+        // let zero_byte_mask = [&zero_byte_mask, &mask1_suffix[..]].concat();
+
+        let builder = swap_bits(
+            builder,
+            &zero_byte_mask,
+            &mask1_suffix,
+            &mask2_suffix,
+            &mask3_suffix,
+        );
+
+        *stk_size += 0;
+        // Now there is a single string with three
+        // Swap pairs of two bytes
+        // let even_byte_mask2 =
+        //     vec![vec![0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0xff, 0xffu8]; num_elems];
+        // let even_byte_mask2: Vec<u8> = even_byte_mask2.into_iter().flatten().collect();
+        // let even_byte_mask2 = [&three_byte_ones[..7], &even_byte_mask2].concat();
+
+        // let odd_byte_mask2 = vec![vec![0xff, 0xff, 0x00, 0x00, 0xff, 0xffu8, 0x00, 0x00]; num_elems];
+        // let odd_byte_mask2: Vec<u8> = odd_byte_mask2.into_iter().flatten().collect();
+        // let odd_byte_mask2 = [&seven_byte_ones[..7], &odd_byte_mask2].concat();
+
+        // let builder = swap_bits(builder, &even_byte_mask2, &odd_byte_mask2, 2);
+
+        *stk_size += 0;
+
+        builder
+    }
+
+    // Assuming a 8 byte stack top.
+    fn calc_fees(builder: Builder, stk_size: &mut i64) -> Builder {
+        let builder = builder
+            // .push_opcode(OP_DUP)
+            .push_int(*stk_size - 4)
+            .push_opcode(OP_ROLL)
+            .push_opcode(OP_LSHIFT);
+        *stk_size -= 1;
+        // .push_opcode(OP_SWAP);
+
+        // let builder = builder
+        //     .push_int(*stk_size - 6)
+        //     .push_opcode(OP_ROLL)
+        //     .push_opcode(OP_LSHIFT);
+
+        builder
+    }
+
+    // Assumes the following form for the numbers
+    // [high_bits_a, high_bits_b, low_bits_b, low_bits_a]
+    // b <= a
+    fn compare_script_nums(builder: Builder, stk_size: &mut i64) -> Builder {
+        let builder = builder
+            .push_opcode(OP_LESSTHANOREQUAL)
+            .push_opcode(OP_TOALTSTACK);
+
+        let builder = builder
+            .push_opcode(OP_2DUP)
+            .push_opcode(OP_EQUAL)
+            .push_opcode(OP_TOALTSTACK)
+            .push_opcode(OP_GREATERTHAN)
+            .push_opcode(OP_FROMALTSTACK)
+            .push_opcode(OP_FROMALTSTACK)
+            .push_opcode(OP_BOOLAND)
+            .push_opcode(OP_BOOLOR)
+            .push_opcode(OP_VERIFY);
+        *stk_size -= 4;
+        builder
+    }
+
+    fn convert_to_script_num_helper(builder: Builder, stk_size: &mut i64) -> Builder {
+        let builder = builder
+            .push_int(1)
+            .push_opcode(OP_CAT)
+            .push_int(-0x1_000_000)
+            .push_opcode(OP_ADD);
+        *stk_size += 0;
+
+        // let builder = builder
+        //     .push_opcode(OP_SWAP)
+        //     .push_int(1)
+        //     .push_opcode(OP_SWAP)//change this later
+        //     .push_opcode(OP_CAT)
+        //     .push_int(-0x1_000_000)
+        //     .push_opcode(OP_ADD);
+        // *stk_size += 0;
+
+        builder
+    }
+
     pub(super) fn pre_code_sep(ctx: &CovenantCreationCtx) -> Builder {
         let asset = ctx.traded_asset;
         let fee_srv_pk = ctx.fee_collector_srv_pk;
         let fee_collector_wsh = &ctx.fee_collector_wsh;
         let timestamp_srv_pk = ctx.timestamp_srv_pk;
         // let mut stk = vec![ser_sig, serialize(&1000_000_u64), serialize(&98_000_000_u64),serialize(&1000_000_u64), recv_pk, btc_fee_asset, btc_asset_ser, sighash_msg, pre_code];
-        let mut stk_size = 13;
+        let mut stk_size = 14;
         let builder = Builder::new();
+        let builder = builder
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_TOALTSTACK);
+        let builder = builder
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_CAT)
+            .push_opcode(OP_FROMALTSTACK);
         let builder = builder
             .push_opcode(OP_OVER)
             // Now create the post script from script pubkey.
@@ -510,7 +699,7 @@ mod cov_scripts {
             .push_opcode(OP_FROMALTSTACK)
             .push_opcode(OP_EQUALVERIFY);
         stk_size -= 1;
-        assert!(stk_size == 10);
+        assert_eq!(stk_size, 11);
 
         // Now check the sigs and fee calculation
         // Attest that the timestamping server digest is correct
@@ -547,10 +736,96 @@ mod cov_scripts {
         stk_size -= 2;
         // Bring the fee onto the top
         let builder = builder
-            .push_int(5)
+            .push_int(stk_size - 3)
             .push_opcode(OP_ROLL)
-            .push_opcode(OP_DROP);
+            .push_int(stk_size - 2)
+            .push_opcode(OP_ROLL)
+            .push_slice(&[0xff, 0xff, 0xff, 0xff, 0xff]);
+        stk_size += 1;
+        let builder = builder.push_opcode(OP_CAT).push_opcode(OP_CAT);
+        stk_size -= 2;
+        // Now check whether the given fees is correct or not.
+        // let builder = builder.push_int(0).push_opcode(OP_RSHIFT);
+        // let builder = builder.push_int(stk_size - 2).push_opcode(OP_ROLL);
+        // let builder = calc_fees(builder, &mut stk_size);
+        // let builder = builder.push_opcode(OP_EQUALVERIFY);
+        // stk_size -= 2;
+        assert_eq!(stk_size, 7);
+        let builder = reverse_bits(builder, &mut stk_size);
+
+        // [high_bits_a, high_bits_b, low_bits_b, low_bits_a]
+        // b <= a
+        // Now compute the entire fees.
+        let builder = builder
+            .push_opcode(OP_DUP)
+            .push_int(2)
+            .push_int(3)
+            .push_opcode(OP_SUBSTR);
+        let builder = convert_to_script_num_helper(builder, &mut stk_size);
+        stk_size += 1;
+        let builder = builder
+            .push_opcode(OP_SWAP)
+            .push_opcode(OP_DUP)
+            .push_int(2 + 3)
+            .push_int(3)
+            .push_opcode(OP_SUBSTR);
+        let builder = convert_to_script_num_helper(builder, &mut stk_size);
+        stk_size += 1;
+        let builder = builder
+            .push_opcode(OP_SWAP)
+            .push_opcode(OP_DUP)
+            .push_int(8 + 2 + 3)
+            .push_int(3)
+            .push_opcode(OP_SUBSTR);
+        stk_size += 1;
+        // let builder = convert_to_script_num_helper(builder, &mut stk_size);
+        let builder = builder
+            .push_opcode(OP_SWAP)
+            .push_int(8 + 2)
+            .push_int(3)
+            .push_opcode(OP_SUBSTR);
+        stk_size += 0;
+        let builder = builder.push_opcode(OP_CAT);
         stk_size -= 1;
+        let builder = calc_fees(builder, &mut stk_size);
+
+        let builder = builder
+            .push_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff])
+            .push_opcode(OP_CAT);
+
+        // let builder = convert_to_script_num_helper(builder, &mut stk_size);
+        assert_eq!(stk_size, 8);
+        let builder = builder
+            .push_opcode(OP_DUP)
+            .push_int(0)
+            .push_int(3)
+            .push_opcode(OP_SUBSTR);
+        let builder = convert_to_script_num_helper(builder, &mut stk_size);
+        stk_size += 1;
+        let builder = builder
+            .push_opcode(OP_SWAP)
+            .push_int(3)
+            .push_int(3)
+            .push_opcode(OP_SUBSTR);
+        stk_size += 0;
+        let builder = convert_to_script_num_helper(builder, &mut stk_size);
+        let builder = builder.push_int(3).push_opcode(OP_ROLL);
+        // let builder = builder;
+        // stk_size += 1;
+        // let builder = convert_amt_three_bytes_to_script_num(builder, &mut stk_size, 7);
+        // assert_eq!(stk_size, 17);
+        // let builder = builder.push_int(stk_size - 3).push_opcode(OP_PICK);
+        // stk_size += 1;
+        // let builder = convert_sent_amt_to_script_num(builder, &mut stk_size, 7);
+        let builder = compare_script_nums(builder, &mut stk_size);
+        // // let builder = perform_add(builder, &mut stk_size);
+        // assert_eq!(stk_size, 13);
+        // // stk_size -= 0;
+        // // let builder = builder.push_int(stk_size - 2).push_opcode(OP_PICK);
+        // // let builder = convert_amt_three_bytes_to_script_num(builder, (stk_size + 2) - 6, 5);
+        // // stk_size -= 0;
+        // // let builder = convert_amt_three_bytes_to_script_num(builder, (stk_size + 2) - 6, 3);
+        // // stk_size -= 0;
 
         let builder = builder
             .push_int(stk_size - 2)
@@ -561,12 +836,21 @@ mod cov_scripts {
             .push_int(stk_size - 2)
             .push_opcode(OP_ROLL)
             .push_opcode(OP_DROP);
-        stk_size -= 1;
-        let builder = builder
-            .push_int(stk_size - 2)
-            .push_opcode(OP_ROLL)
-            .push_opcode(OP_DROP);
         // stk_size -= 1;
+        // let builder = builder
+        //     .push_int(stk_size - 2)
+        //     .push_opcode(OP_ROLL)
+        //     .push_opcode(OP_DROP);
+        // stk_size -= 1;
+        // let builder = builder
+        //     .push_int(stk_size - 2)
+        //     .push_opcode(OP_ROLL)
+        //     .push_opcode(OP_DROP);
+        // // stk_size -= 1;
+        // let builder = builder
+        //     .push_opcode(OP_2DROP)
+        //     .push_opcode(OP_2DROP)
+        //     .push_opcode(OP_2DROP);
         builder.push_opcode(OP_CODESEPARATOR)
     }
 
