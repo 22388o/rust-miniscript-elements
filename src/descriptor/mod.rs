@@ -46,7 +46,7 @@ use MiniscriptKey;
 use Satisfier;
 use ToPublicKey;
 
-mod covenants;
+pub mod covenants;
 
 use self::covenants::{CovenantAddressCtx, CovenantCtx};
 // mod create_descriptor;
