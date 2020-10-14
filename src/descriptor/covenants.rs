@@ -80,6 +80,7 @@ pub struct CoventSpendCtx<Pk: MiniscriptKey> {
     pub change_amt: confidential::Value,
     pub fee_amt: confidential::Value,
     pub tx_fee_btc: confidential::Value,
+    pub prev_utxo_amt: confidential::Value,
 
     pub redeem_priv_key: bitcoin::PrivateKey,
 
@@ -254,12 +255,8 @@ impl<Pk: MiniscriptKey + ToPublicKey> CovenantCtx<Pk> {
             let ctx = self.spend_ctx.as_ref().unwrap();
             let mut cache = SigHashCache::new(tx);
             let sighash_type = SigHashType::from_u32(1); //sighash all
-            let actual_result = cache.signature_hash(
-                0,
-                &script_code,
-                confidential::Value::Explicit(0x0000000005f5e100),
-                sighash_type,
-            );
+            let actual_result =
+                cache.signature_hash(0, &script_code, ctx.prev_utxo_amt, sighash_type);
 
             let secp = Secp256k1::new();
             sighash_msg = actual_result.clone().into_iter().flatten().collect();
