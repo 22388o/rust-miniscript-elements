@@ -25,7 +25,7 @@ const BTC_ASSET: [u8; 32] = [
 pub struct CovenantCreationCtx {
     /// Asset ID of the c
     pub traded_asset: confidential::Asset,
-    pub fee_collector_wsh: Script,
+    pub fee_collector_wpkh: Script,
     // server pks
     pub fee_collector_srv_pk: bitcoin::PublicKey,
     pub timestamp_srv_pk: bitcoin::PublicKey,
@@ -220,7 +220,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> CovenantCtx<Pk> {
             tx.output[0].asset = self.commit_ctx.cov_info.traded_asset;
             tx.output[0].value = ctx.fee_amt;
             tx.output[0].nonce = confidential::Nonce::Null;
-            tx.output[0].script_pubkey = self.commit_ctx.cov_info.fee_collector_wsh.clone();
+            tx.output[0].script_pubkey = self.commit_ctx.cov_info.fee_collector_wpkh.clone();
 
             tx.output.push(TxOut::default());
             // The second output is reciver amount
@@ -528,7 +528,7 @@ mod cov_scripts {
     pub(super) fn pre_code_sep(ctx: &CovenantCreationCtx) -> Builder {
         let asset = ctx.traded_asset;
         let fee_srv_pk = ctx.fee_collector_srv_pk;
-        let fee_collector_wsh = &ctx.fee_collector_wsh;
+        let fee_collector_wpkh = &ctx.fee_collector_wpkh;
         let timestamp_srv_pk = ctx.timestamp_srv_pk;
         // let mut stk = vec![ser_sig, serialize(&1000_000_u64), serialize(&98_000_000_u64),serialize(&1000_000_u64), recv_pk, btc_fee_asset, btc_asset_ser, sighash_msg, pre_code];
         let mut stk_size = 14;
@@ -619,8 +619,8 @@ mod cov_scripts {
         pre_value_blob.extend(&serialize(&asset)); // asset
         pre_value_blob.push(1u8); // explicit prefix;
         let mut post_value_blob = vec![0u8]; // nonce
-        assert!(fee_collector_wsh.is_v0_p2wsh());
-        post_value_blob.extend(serialize(fee_collector_wsh));
+        assert!(fee_collector_wpkh.is_v0_p2wpkh());
+        post_value_blob.extend(serialize(fee_collector_wpkh));
         let builder = builder.push_slice(&pre_value_blob).push_opcode(OP_DUP);
         stk_size += 2;
         let builder = builder
@@ -629,7 +629,7 @@ mod cov_scripts {
             .push_opcode(OP_SIZE)
             .push_int(8)
             .push_opcode(OP_EQUALVERIFY)
-            .push_opcode(OP_CAT) // value; deal with this later
+            .push_opcode(OP_CAT)
             .push_slice(&post_value_blob)
             .push_opcode(OP_CAT)
             .push_opcode(OP_SWAP);
